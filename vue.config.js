@@ -7,12 +7,15 @@ const osSpec = {
 const BundleAnalyzerPlugin = require("webpack-bundle-analyzer")
   .BundleAnalyzerPlugin;
 
+const VuetifyLoaderPlugin = require("vuetify-loader/lib/plugin");
+
 const trayIconName = "tray@2x.png";
 
 module.exports = {
   transpileDependencies: ["vuetify"],
   pluginOptions: {
     electronBuilder: {
+      customFileProtocol: "./",
       mainProcessTypeChecking: false,
       chainWebpackMainProcess: (config) => {
         // config.when(process.env.NODE_ENV === "production", (config) => {
@@ -104,12 +107,13 @@ module.exports = {
           license: "readable_license.txt",
         },
       },
-      externals: ["iohook", "robotjs", "shortcut-capture"],
+      externals: ["iohook", "robotjs", "shortcut-capture", "active-win"],
       // 这一步还蛮重要的，不然就会报错
       nodeModulesPath: ["./node_modules"],
     },
   },
   configureWebpack: {
+    plugins: [new VuetifyLoaderPlugin()],
     optimization: {
       usedExports: true,
     },

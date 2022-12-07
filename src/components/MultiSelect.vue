@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div style="text-align: left;">
     <p>{{ identifier }}</p>
     <v-select
       v-model="value"
@@ -13,23 +13,14 @@
 </template>
 
 <script lang="ts">
-import {
-  translatorTypes,
-  Identifier,
-  compose,
-  ActionView,
-} from "../common/types";
-import { Prop, Component, Watch, Vue } from "vue-property-decorator";
-import bus from "../common/event-bus";
+import { translatorTypes, Identifier } from "../common/types";
+import { Prop, Component } from "vue-property-decorator";
+import Base from "./Base.vue";
 
 @Component
-export default class EngineGroup extends Vue {
+export default class MultiSelect extends Base {
   @Prop({ default: undefined }) readonly identifier!: Identifier;
   readonly translatorTypes = translatorTypes;
-
-  callback(...args: any[]) {
-    bus.at("dispatch", ...args);
-  }
 
   get value() {
     return this.$store.state.config[this.identifier];

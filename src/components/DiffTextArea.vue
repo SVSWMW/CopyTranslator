@@ -1,5 +1,8 @@
 <template>
-  <div>
+  <div contenteditable="true">
+    <div v-if="(allParts.length==0)">
+      <h2>暂无多源对比结果，请翻译一句新的</h2>
+    </div>
     <div v-if="!config['contrastDict'] || !dictResult.valid">
       <div v-for="(part, key) in allParts" :key="key">
         <span style="color: red; font-size: 15px;">
@@ -25,42 +28,28 @@
         </div>
       </div>
     </div>
-    <DictResultPanel
-      v-if="config['contrastDict'] && dictResult.valid"
-    ></DictResultPanel>
   </div>
 </template>
 
 <script lang="ts">
-import { Mixins, Component, Vue, Watch } from "vue-property-decorator";
-import DictResultPanel from "./DictResult.vue";
+import { Mixins, Component, Prop } from "vue-property-decorator";
 import BaseView from "./BaseView.vue";
+import { CompareResult } from "../common/translate/comparator";
 
-const AppProps = Vue.extend({
-  props: {
-    allParts: Array,
-  },
-});
-
-@Component({
-  components: {
-    DictResultPanel,
-  },
-})
-export default class DiffTextArea extends Mixins(Vue, AppProps, BaseView) {
-  get diffFontSize() {
-    return this.config[this.layoutType].diffFontSize;
-  }
+@Component
+export default class DiffTextArea extends Mixins(BaseView) {
+  @Prop({ default: [] }) readonly allParts!: CompareResult[];
 
   get diffStyle() {
     return {
-      fontSize: this.diffFontSize.toString() + "px",
+      fontSize: this.diffSize.toString() + "px",
     };
   }
 
   mouseOver(idx: number) {
     this.targetIdx = idx;
   }
+
   getStyle(p: any) {
     if (p.added) {
       return { color: "green" };

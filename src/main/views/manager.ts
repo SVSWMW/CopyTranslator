@@ -12,9 +12,10 @@ import { MainController } from "@/common/controller";
 import { defaultConfig, MinimalParam, loadRoute, insertStyles } from "./utils";
 import config from "@/common/configuration";
 import eventBus from "@/common/event-bus";
+import { LayoutConfig } from "@/common/rule";
 const forceFocus = require("@adeperio/forcefocus");
 
-export class WindowMangaer {
+export class WindowManager {
   windows = new Map<RouteActionType, BrowserWindow>();
   controller: MainController;
 
@@ -22,23 +23,47 @@ export class WindowMangaer {
     this.controller = controller;
     eventBus.gon("preSet", (identifier: Identifier, newLayoutType: any) => {
       if (identifier == "layoutType") {
-        this.updateBounds(newLayoutType);
+        this.saveBounds(); //在切换布局的时候保存窗口信息
       }
     });
   }
 
-  updateBounds(newLayoutType: LayoutType | null = null) {
-    const oldLayoutType = config.get("layoutType");
+  get mainWindow() {
+    return this.get("contrast");
+  }
 
-    let windowConfig = config.get(oldLayoutType);
-    const window = this.get("contrast");
+  setIgnoreMouseEvents(value: boolean) {
+    if (value) {
+      this.mainWindow.setIgnoreMouseEvents(true, { forward: true });
+    } else {
+      this.mainWindow.setIgnoreMouseEvents(false);
+    }
+  }
+
+  get hasMain() {
+    return this.windows.has("contrast");
+  }
+
+  saveBounds() {
+    if (!this.hasMain) {
+      return;
+    }
+    const oldLayoutType = config.get<LayoutType>("layoutType");
+    let windowConfig = config.get<LayoutConfig>(oldLayoutType);
+    const window = this.mainWindow;
     config.set(oldLayoutType, {
       ...windowConfig,
       ...window.getBounds(),
     });
-    if (newLayoutType != null) {
-      window.setBounds(config.get(newLayoutType));
+  }
+
+  syncBounds() {
+    if (!this.hasMain) {
+      return;
     }
+    const layoutType = config.get<LayoutType>("layoutType");
+    let windowConfig = config.get<LayoutConfig>(layoutType);
+    this.mainWindow.setBounds(windowConfig);
   }
 
   get(routeName: RouteActionType): BrowserWindow {
@@ -49,14 +74,21 @@ export class WindowMangaer {
     }
   }
 
+  closeByName(routeName: RouteActionType) {
+    if (this.windows.has(routeName)) {
+      (<BrowserWindow>this.windows.get(routeName)).close();
+      this.windows.delete(routeName);
+    }
+  }
+
   close() {
-    this.updateBounds();
-    this.get("contrast").close();
+    this.saveBounds();
+    this.mainWindow.close();
     app.quit();
   }
 
   edgeHide(hideDirection: HideDirection) {
-    const window = this.get("contrast");
+    const window = this.mainWindow;
     const bounds = window.getBounds();
     let { x, y, width, height } = bounds;
     const { x: xBound, width: screenWidth } = screen.getDisplayMatching(
@@ -92,7 +124,7 @@ export class WindowMangaer {
   }
 
   edgeShow() {
-    const window = this.get("contrast");
+    const window = this.mainWindow;
     const bounds = window.getBounds();
     let { x, y, width, height } = bounds;
     const { x: xBound, width: screenWidth } = screen.getDisplayMatching(
@@ -120,7 +152,7 @@ export class WindowMangaer {
   }
 
   onEdge(): HideDirection {
-    const window = this.get("contrast");
+    const window = this.mainWindow;
     if (!this.controller.get("autoHide")) {
       return "None";
     }
@@ -141,7 +173,7 @@ export class WindowMangaer {
   }
 
   showWindow() {
-    const window = this.get("contrast");
+    const window = this.mainWindow;
     if (window.isMinimized()) {
       window.restore();
     }
@@ -178,7 +210,7 @@ export class WindowMangaer {
     const cfg = {
       ...defaultConfig,
       ...param,
-      alwaysOnTop: config.get("stayTop"),
+      alwaysOnTop: config.get<boolean>("stayTop"),
     };
     const window = new BrowserWindow(cfg);
 
@@ -214,8 +246,9 @@ export class WindowMangaer {
       show: false,
       frame: false,
       title: "CopyTranslator",
+      transparent: true,
     };
-    const previous_config = config.get(config.get("layoutType"));
+    const previous_config = config.get<LayoutConfig>(config.get("layoutType"));
     window_config = { ...window_config, ...previous_config };
     const window = this.createWindow("contrast", window_config, true);
     window.on("blur", () => {
@@ -232,7 +265,7 @@ export class WindowMangaer {
   }
 
   createSetting() {
-    const width = 320;
+    const width = 500;
     const height = 680;
     const {
       x: xBound,
@@ -250,11 +283,13 @@ export class WindowMangaer {
       maximizable: false,
       minimizable: false,
       title: t["settings"],
-      parent: this.get("contrast"),
+      parent: this.mainWindow,
+      frame: false,
     };
-    const previous_cfg = config.get("settings");
-    cfg["width"] = previous_cfg["width"];
-    cfg["height"] = previous_cfg["height"];
+    // TODO 这里要保存用户当前的窗口参数
+    // const previous_cfg = config.get<LayoutConfig>("settings");
+    // cfg["width"] = previous_cfg["width"];
+    // cfg["height"] = previous_cfg["height"];
     return this.createWindow("settings", cfg);
   }
 
@@ -276,7 +311,7 @@ export class WindowMangaer {
       height: height,
       maximizable: false,
       minimizable: false,
-      parent: this.get("contrast"),
+      parent: this.mainWindow,
       title: "Update",
     };
     return this.createWindow("update", cfg);

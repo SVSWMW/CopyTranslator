@@ -1,60 +1,99 @@
 <template>
   <div>
-    <v-app>
-      <v-app-bar app color="#8E24AA" dark dense height="40px">
-        <v-app-bar-nav-icon @click.stop="drawer = !drawer"></v-app-bar-nav-icon>
-        {{ trans[layoutType] }}
-        <v-spacer style="height: 100%;">
-          <div
-            style="
-              -webkit-app-region: drag;
-              height: 100%;
-              width: 100%;
-              font-family: 'Encode Sans', sans-serif;
-            "
-          ></div>
+    <v-app v-bind:style="[appStyle, transparency]">
+      <v-dialog v-model="dialog">
+        <Tips></Tips>
+      </v-dialog>
+      <v-app-bar app :color="barColor" dark dense :height="titlebarHeight">
+        <ActionButton
+          v-if="!isMini"
+          left_click="drawer"
+          icon="mdi-menu"
+        ></ActionButton>
+        <div class="noSelect">
+          <p style="margin: auto;" class="hidden-mobile" v-if="!isMini">
+            {{ trans[layoutType] }}
+          </p>
+        </div>
+        <v-spacer
+          style="height: 100%;"
+          @mouseover="penerate(true)"
+          @mouseleave="penerate(false)"
+        >
+          <div :class="{ dragableDiv: !config.penerate }"></div>
         </v-spacer>
         <v-menu top>
           <template v-slot:activator="{ on }">
-            <div v-on="on" v-on:contextmenu="callback('listenClipboard')">
-              <v-badge dot :color="color" offset-y="pl/ml-5" offset-x="pl/ml-1">
+            <div
+              style="display: flex;"
+              v-on="on"
+              @contextmenu="callback('listenClipboard')"
+            >
+              <v-badge
+                dot
+                :color="color"
+                offset-y="pl/ml-5"
+                offset-x="pl/ml-1"
+                style="margin: auto;"
+              >
                 <EngineButton
                   :engine="currentEngine"
                   :valid="valid"
-                  :enable="Boolean(false)"
+                  :enable="false"
+                  :tooltip="trans['engineButton']"
                 ></EngineButton>
               </v-badge>
             </div>
           </template>
-
-          <v-list>
-            <v-list-item v-for="engine in rest_engines" :key="engine">
-              <EngineButton :engine="engine" :valid="valid"></EngineButton>
-            </v-list-item>
-          </v-list>
+          <v-card :style="popupStyle" class="popup">
+            <v-row style="margin: 0px;">
+              <v-col
+                v-for="(engineGroup, groupIndex) in restEngineGroups"
+                :key="groupIndex"
+                style="padding: 0px;"
+              >
+                <div
+                  v-for="engine in engineGroup"
+                  :key="engine"
+                  :style="engineButtonStyle"
+                >
+                  <EngineButton :engine="engine" :valid="valid"></EngineButton>
+                </div>
+              </v-col>
+            </v-row>
+          </v-card>
         </v-menu>
-
-        <v-btn @click="enumerateLayouts" fab small depressed color="#8E24AA">
-          <v-icon>mdi-view-quilt</v-icon>
-        </v-btn>
-        <v-btn
-          color="#8E24AA"
-          small
-          depressed
-          fab
-          @click="callback('copyResult')"
-          v-on:contextmenu="callback('copySource')"
-          ><v-icon>mdi-content-copy</v-icon></v-btn
-        >
-        <v-btn
-          color="#8E24AA"
-          small
-          depressed
-          fab
-          @click="callback('minimize')"
-          @contextmenu="close"
-          ><v-icon>mdi-window-minimize</v-icon></v-btn
-        >
+        <div class="d-flex flex-row" style="height: 100%; padding-right: 1px;">
+          <div v-if="isMini" class="dragableDiv" style="display: flex;">
+            <ActionButton icon="mdi-drag" style="margin: auto;"></ActionButton>
+          </div>
+          <ActionButton
+            v-if="isMini"
+            left_click="drawer"
+            icon="mdi-menu"
+          ></ActionButton>
+          <ActionButton
+            class="action-btn"
+            left_click="penerate"
+            icon="mdi-cursor-pointer"
+          ></ActionButton>
+          <ActionButton
+            class="action-btn"
+            left_click="transparency|1.0"
+            right_click="transparency|0.0"
+            icon="mdi-opacity"
+          ></ActionButton>
+          <ActionButton
+            class="action-btn"
+            v-for="(actionButton, buttonIndex) in actionButtons"
+            :left_click="actionButton.left_click"
+            :right_click="actionButton.right_click"
+            :icon="actionButton.icon"
+            :tooltip="actionButton.tooltip"
+            :predefined="actionButton.predefined"
+            :key="buttonIndex"
+          ></ActionButton>
+        </div>
       </v-app-bar>
       <v-navigation-drawer
         v-model="drawer"
@@ -72,54 +111,88 @@
       </v-navigation-drawer>
 
       <ContrastPanel
-        :style="area"
+        :style="[area, transparentArea]"
         v-bind:class="{ active: drawer }"
+        @mouseover.native="penerate(true)"
+        @mouseleave.native="penerate(false)"
       ></ContrastPanel>
     </v-app>
   </div>
 </template>
 
 <script lang="ts">
-import Vue from "vue";
+import ActionButton from "../components/ActionButton.vue";
 import ContrastPanel from "../components/ContrastPanel.vue";
 import BaseView from "../components/BaseView.vue";
 import WindowController from "../components/WindowController.vue";
 import Action from "../components/Action.vue";
 import Component from "vue-class-component";
-import { Mixins, Watch } from "vue-property-decorator";
+import { Mixins } from "vue-property-decorator";
+import Tips from "@/components/Tips.vue";
 import {
   Identifier,
-  layoutTypes,
-  LayoutType,
-  translatorTypes,
+  ActionButton as ActionButtonType,
   abstractTranslatorTypes,
   GeneralTranslatorType,
+  hexToRgb,
 } from "../common/types";
-import { ipcRenderer as ipc } from "electron";
 import EngineButton from "../components/EngineButton.vue";
 
-import {
-  dictionaryTypes,
-  DictionaryType,
-  emptyDictResult,
-} from "../common/dictionary/types";
+import { dictionaryTypes, DictionaryType } from "../common/dictionary/types";
+import "@/css/shared-styles.css";
+
+function sliceArray<T>(arr: T[], size: number) {
+  var arr2 = [];
+  for (var i = 0; i < arr.length; i = i + size) {
+    arr2.push(arr.slice(i, i + size));
+  }
+  return arr2;
+}
 
 @Component({
   components: {
-    Action: Action,
-    ContrastPanel: ContrastPanel,
-    EngineButton: EngineButton,
+    Action,
+    ContrastPanel,
+    EngineButton,
+    ActionButton,
+    Tips,
   },
 })
 export default class Contrast extends Mixins(BaseView, WindowController) {
-  barWidth: number = 0;
   readonly routeName = "contrast";
   actionKeys: Identifier[] = this.$controller.action.getKeys(
     "contrastPanel"
   ) as Identifier[];
 
-  get trans() {
-    return this.$store.getters.locale;
+  dialog: boolean = false;
+  marginBottom: number = 5;
+
+  penerate(value: boolean) {
+    if (this.config.penerate) {
+      //穿透，那就根据鼠标的情况进行设置
+      this.set("ignoreMouseEvents", value);
+    } else if (this.config.ignoreMouseEvents) {
+      //不穿透,但是此时却说要ignore，这就不对，要更新值
+      this.set("ignoreMouseEvents", false);
+    }
+  }
+
+  get isMini() {
+    return this.config.transparency > 0;
+  }
+
+  mounted() {
+    this.dialog = this.config.isNewUser;
+  }
+
+  get nButton() {
+    return Math.max(
+      1,
+      Math.floor(
+        (this.windowHeight - this.titlebarHeightVal) /
+          (this.titlebarHeightVal + this.marginBottom)
+      )
+    );
   }
 
   get engines(): Array<GeneralTranslatorType | DictionaryType> {
@@ -130,32 +203,54 @@ export default class Contrast extends Mixins(BaseView, WindowController) {
     return this.valid ? [...dictionaryTypes] : translatorEngines;
   }
 
-  get rest_engines() {
+  get restEngines() {
     return this.engines.filter((engine: any) => engine != this.currentEngine);
   }
 
-  get styleNow() {
-    return `background:${this.color};`;
+  get restEngineGroups() {
+    return sliceArray(this.restEngines, this.nButton);
+  }
+
+  get engineButtonStyle() {
+    return { "margin-bottom": `${this.marginBottom}px` };
+  }
+
+  get popupStyle() {
+    const width = (this.titlebarHeightVal + 10) * this.restEngineGroups.length;
+    const margin = this.titlebarHeightVal / 2 + 5;
+    return { width: `${width}px`, "margin-top": `${margin}px` };
+  }
+
+  get actionButtons(): ActionButtonType[] {
+    return this.config.actionButtons;
   }
 
   get color() {
     return this.$store.state.color;
   }
 
-  @Watch("drawer")
-  changeDrawer(val: boolean) {
-    if (val) {
-      this.barWidth = 200;
-    } else {
-      this.barWidth = 0;
-    }
+  get barWidth(): number {
+    return this.drawer ? 200 : 0;
   }
 
   get area() {
     return {
-      "margin-top": "40px",
-      width: `${(this.windowWidth - this.barWidth).toString()}px`,
+      "margin-top": this.titlebarHeight,
+      width: `${(this.windowWidth - this.barWidth - 1).toString()}px`,
+      "font-family": this.config.contentFontFamily,
     };
+  }
+
+  get transparentArea() {
+    if (this.config.transparency == 0) {
+      return {};
+    } else {
+      return {
+        "border-width": "0px 1px 1px 1px",
+        "border-style": "solid",
+        "border-color": this.$vuetify.theme.currentTheme.primary,
+      };
+    }
   }
 
   get drawer(): boolean {
@@ -166,13 +261,28 @@ export default class Contrast extends Mixins(BaseView, WindowController) {
     this.set("drawer", val);
   }
 
-  enumerateLayouts() {
-    const index = layoutTypes.findIndex((x) => x === this.layoutType);
-    this.set("layoutType", layoutTypes[(index + 1) % layoutTypes.length]);
-  }
-
   get layoutType() {
     return this.config.layoutType;
+  }
+
+  get backgroundColor() {
+    const alpha = 1 - this.config.transparency; //不透明度
+    const bgColor = this.$vuetify.theme.dark ? "#121212" : "#FFFFFF";
+    const rgb = hexToRgb(bgColor as string);
+    return `rgba(${rgb.r},${rgb.g},${rgb.b},${alpha})`;
+  }
+
+  get barColor() {
+    const alpha = 1 - this.config.transparency; //不透明度
+    const bgColor = this.$vuetify.theme.currentTheme.primary;
+    const rgb = hexToRgb(bgColor as string);
+    return `rgba(${rgb.r},${rgb.g},${rgb.b},${alpha})`;
+  }
+
+  get transparency() {
+    return {
+      background: this.backgroundColor,
+    };
   }
 }
 </script>
@@ -180,26 +290,39 @@ export default class Contrast extends Mixins(BaseView, WindowController) {
 .active {
   margin-left: 200px;
 }
-::-webkit-scrollbar {
-  display: none;
+
+@media (max-width: 300px) {
+  .hidden-mobile {
+    display: none;
+  }
 }
-.ctrlBtn {
-  position: absolute;
-  bottom: 5px;
-  right: 5px;
-  width: 300px;
+
+.dragableDiv {
+  -webkit-app-region: drag;
+  height: 100%;
+  width: 100%;
 }
-.btnBase {
-  background-position: center;
-  background-size: contain;
-}
+
 .noPad {
   padding: 0px;
 }
-.copyBtn {
-  background-image: url("../images/copy.png");
+
+::-webkit-scrollbar {
+  display: none;
 }
-.switchBtn {
-  background-image: url("../images/switch.png");
+
+.noSelect {
+  user-select: none;
+  display: flex;
+  -webkit-app-region: drag;
+}
+
+.popup {
+  padding-top: 5px;
+  text-align: center;
+}
+
+.action-btn {
+  margin: auto;
 }
 </style>

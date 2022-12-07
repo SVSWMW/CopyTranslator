@@ -10,7 +10,6 @@ import {
   LayoutConfig,
 } from "./rule";
 import { languages, Language } from "@opentranslate/languages";
-
 import {
   translatorTypes,
   TranslatorType,
@@ -24,6 +23,11 @@ import {
   hideDirections,
   GoogleSource,
   googleSources,
+  DragCopyMode,
+  dragCopyModes,
+  isValidActionButton,
+  ActionButton,
+  ConfigSnapshots,
 } from "./types";
 import { DictionaryType, dictionaryTypes } from "./dictionary/types";
 import { version } from "./constant";
@@ -33,244 +37,138 @@ function initConfig(
 ): ConfigParser {
   if (!config) config = new ConfigParser();
 
+  config.setRule("autoCopy", new TypeRule<boolean>(false));
+  config.setRule("listenClipboard", new TypeRule<boolean>(true));
+  config.setRule("dragCopy", new TypeRule<boolean>(false));
+  config.setRule("doubleClickCopy", new TypeRule<boolean>(true));
+  config.setRule("incrementalCopy", new TypeRule<boolean>(false));
+  config.setRule("stayTop", new TypeRule<boolean>(true));
+  config.setRule("smartDict", new TypeRule<boolean>(true));
+  config.setRule("contrastDict", new TypeRule<boolean>(true));
+  config.setRule("smartTranslate", new TypeRule<boolean>(true));
+  config.setRule("autoPaste", new TypeRule<boolean>(false));
+  config.setRule("autoHide", new TypeRule<boolean>(false));
+  config.setRule("autoShow", new TypeRule<boolean>(false));
+  config.setRule("autoFormat", new TypeRule<boolean>(false));
+  config.setRule("autoPurify", new TypeRule<boolean>(true));
+  config.setRule("enableNotify", new TypeRule<boolean>(false));
+  config.setRule("neverShow", new TypeRule<boolean>(false));
+  config.setRule("showGoogleMessage", new TypeRule<boolean>(true));
+  config.setRule("activeWindows", new TypeRule<string[]>([]));
   config.setRule(
-    "autoCopy",
-    new TypeRule<boolean>(false, "auto copy result to clipboard")
+    "dragCopyMode",
+    new UnionRule<DragCopyMode>("dragCopyGlobal", dragCopyModes)
   );
-
-  config.setRule(
-    "listenClipboard",
-    new TypeRule<boolean>(true, "Listen to Clipboard")
-  );
-
-  config.setRule(
-    "dragCopy",
-    new TypeRule<boolean>(false, "catch simulate copy")
-  );
-
-  config.setRule(
-    "doubleClickCopy",
-    new TypeRule<boolean>(true, "double click copy")
-  );
-
-  config.setRule(
-    "incrementalCopy",
-    new TypeRule<boolean>(false, "incremental copy")
-  );
-  config.setRule("stayTop", new TypeRule<boolean>(true, "always stay on top"));
-  config.setRule("smartDict", new TypeRule<boolean>(true, "smart dict"));
-  config.setRule(
-    "contrastDict",
-    new TypeRule<boolean>(true, "dict on contrast")
-  );
-  config.setRule(
-    "smartTranslate",
-    new TypeRule<boolean>(true, "smart translate")
-  );
-
-  config.setRule(
-    "autoPaste",
-    new TypeRule<boolean>(false, "auto paste after translate")
-  );
-
-  config.setRule(
-    "autoHide",
-    new TypeRule<boolean>(false, "auto hide when close to edge")
-  );
-
-  config.setRule(
-    "autoShow",
-    new TypeRule<boolean>(false, "auto show after translate")
-  );
-
-  config.setRule(
-    "autoFormat",
-    new TypeRule<boolean>(false, "auto replace the contene in clipboard")
-  );
-
-  config.setRule(
-    "autoPurify",
-    new TypeRule<boolean>(true, "remove extra linebreak when translate")
-  );
-
-  config.setRule(
-    "enableNotify",
-    new TypeRule<boolean>(false, "notify after translate")
-  );
-  config.setRule(
-    "skipTaskbar",
-    new TypeRule<boolean>(false, "hide the taskbar")
-  );
-  config.setRule(
-    "neverShow",
-    new TypeRule<boolean>(false, "never show warning")
-  );
-
-  config.setRule(
-    "showGoogleMessage",
-    new TypeRule<boolean>(true, "show google message")
-  );
-
-  config.setRule(
-    "isNewUser",
-    new TypeRule<boolean>(true, "this is the first start up of a new user")
-  );
-
-  config.setRule("toastTip", new TypeRule<boolean>(false, "action toast tip"));
-
-  config.setRule("drawer", new TypeRule<boolean>(false, "never show warning"));
-
-  config.setRule("closeAsQuit", new TypeRule<boolean>(true, "close as quit"));
-
-  config.setRule(
-    "autoCheckUpdate",
-    new TypeRule<boolean>(true, "auto check update after startup")
-  );
-
-  config.setRule(
-    "openAtLogin",
-    new TypeRule<boolean>(false, "auto start at login")
-  );
-
-  config.setRule(
-    "multiSource",
-    new TypeRule<boolean>(false, "show multi source result")
-  );
-
-  config.setRule(
-    "enableDoubleCopyTranslate",
-    new TypeRule<boolean>(false, "enable Double Ctrl+C Translate")
-  );
-
-  config.setRule(
-    "translatorType",
-    new UnionRule<TranslatorType>(
-      "google",
-      "type of translator",
-      translatorTypes
-    )
-  );
-
-  config.setRule(
-    "fallbackTranslator",
-    new UnionRule<TranslatorType>(
-      "baidu",
-      "后备翻译引擎，当前引擎不支持此语言时启用",
-      translatorTypes
-    )
-  );
-
+  config.setRule("dragCopyWhiteList", new TypeRule<string[]>([]));
+  config.setRule("dragCopyBlackList", new TypeRule<string[]>([]));
+  config.setRule("isNewUser", new TypeRule<boolean>(true));
+  config.setRule("toastTip", new TypeRule<boolean>(false));
+  config.setRule("closeAsQuit", new TypeRule<boolean>(true));
+  config.setRule("autoCheckUpdate", new TypeRule<boolean>(true));
+  config.setRule("openAtLogin", new TypeRule<boolean>(false));
+  config.setRule("enableDoubleCopyTranslate", new TypeRule<boolean>(false));
   config.setRule(
     "version",
-    new TypeRule<string>(version, "current version", (ver: string) => {
+    new TypeRule<string>(version, (ver: string) => {
       return ver === version;
     })
   );
 
+  //外观相关
+  config.setRule("skipTaskbar", new TypeRule<boolean>(false));
+  config.setRule("multiSource", new TypeRule<boolean>(false));
+  config.setRule("drawer", new TypeRule<boolean>(true));
+  config.setRule("localeSetting", new UnionRule<Language>("auto", languages));
   config.setRule(
-    "dictionaryType",
-    new UnionRule<DictionaryType>(
-      "youdao",
-      "type of dictionary",
-      dictionaryTypes
+    "hideDirect",
+    new UnionRule<HideDirection>("Up", hideDirections)
+  );
+  config.setRule(
+    "primaryColor",
+    new TypeRule<string>("#8E24AA", (x: string) => x.startsWith("#"))
+  );
+  config.setRule(
+    "contentFontFamily",
+    new TypeRule<string>(
+      '"Microsoft YaHei", Arial, Helvetica, sans-serif, "宋体"'
     )
+  );
+  config.setRule(
+    "interfaceFontFamily",
+    new TypeRule<string>(
+      '"Microsoft YaHei", Arial, Helvetica, sans-serif, "宋体"'
+    )
+  );
+  config.setRule("colorMode", new UnionRule<ColorMode>("auto", colorModes));
+  config.setRule("titlebarHeight", new TypeRule<number>(32));
+  config.setRule("ignoreMouseEvents", new TypeRule<boolean>(false), false); //这个玩意儿不需要保存
+  config.setRule("penerate", new TypeRule<boolean>(false)); //这个玩意儿需要保存
+  config.setRule("configSnapshots", { predefined: {} });
+  config.setRule(
+    "transparency",
+    new TypeRule<number>(0.0, (x) => x <= 1.0 && x >= 0.0)
   );
 
   config.setRule(
     "layoutType",
-    new UnionRule<LayoutType>("horizontal", "type of layout", layoutTypes)
+    new UnionRule<LayoutType>("horizontal", layoutTypes)
+  ); //布局类型
+  //下面是三种布局
+  config.setRule(
+    "horizontal",
+    new StructRule<LayoutConfig>({
+      diffFontSize: 15,
+      sourceFontSize: 15,
+      resultFontSize: 15,
+      dictFontSize: 15,
+      x: 535,
+      y: 186,
+      height: 600,
+      width: 1094,
+      ratio: 0.5,
+    })
   );
 
   config.setRule(
-    "hideDirect",
-    new UnionRule<HideDirection>("Up", "HideDirection", hideDirections)
+    "vertical",
+    new StructRule<LayoutConfig>({
+      diffFontSize: 15,
+      sourceFontSize: 15,
+      resultFontSize: 15,
+      dictFontSize: 15,
+      x: 535,
+      y: 186,
+      height: 600,
+      width: 1094,
+      ratio: 0.5,
+    })
   );
 
   config.setRule(
-    "colorMode",
-    new UnionRule<ColorMode>("auto", "color mode", colorModes)
+    "focus",
+    new StructRule<LayoutConfig>({
+      diffFontSize: 15,
+      resultFontSize: 15,
+      dictFontSize: 15,
+      x: 535,
+      y: 186,
+      height: 600,
+      width: 1094,
+    })
   );
 
   config.setRule(
-    "contrast",
-    new StructRule<ModeConfig>(
-      {
-        x: 535,
-        y: 186,
-        height: 600,
-        width: 1094,
-      },
-      "parameters of contrast mode"
-    )
-  );
-
-  config.setRule(
+    //TODO 但是这里其实没有自动更新过参数
     "settings",
-    new StructRule<ModeConfig>(
-      {
-        x: 1390,
-        y: 133,
-        height: 787,
-        width: 415,
-      },
-      "parameters of setting panel"
-    )
+    new StructRule<ModeConfig>({
+      x: 1390,
+      y: 133,
+      height: 787,
+      width: 500,
+    })
   );
 
-  config.setRule(
-    "sourceLanguage",
-    new UnionRule<Language>("en", "sourceLanguage language", languages)
-  );
-
-  config.setRule(
-    "targetLanguage",
-    new UnionRule<Language>("zh-CN", "targetLanguage language", languages)
-  );
-
-  config.setRule(
-    "localeSetting",
-    new UnionRule<Language>("auto", "localeSetting setting", languages)
-  );
-
-  config.setRule(
-    "translator-enabled", //所有启用的的引擎
-    new GroupRule<TranslatorType>(
-      ["google", "baidu", "caiyun", "keyan", "bing", "deepl", "tencent"],
-      "所有启用的的引擎，可以关闭某些不常用引擎以节省资源",
-      translatorTypes,
-      "v10.2.4"
-    )
-  );
-
-  config.setRule(
-    "translator-cache", //所有会自动查询并缓存结果以加速切换的翻译引擎
-    new GroupRule<TranslatorType>(
-      ["google", "baidu", "caiyun", "keyan", "bing", "deepl", "tencent"],
-      "所有会自动查询并缓存结果以加速切换的翻译引擎",
-      translatorTypes,
-      "v10.2.4"
-    )
-  );
-
-  config.setRule(
-    "translator-compare", //多源对比时用的引擎
-    new GroupRule<TranslatorType>(
-      ["google", "baidu", "caiyun", "keyan", "bing", "deepl", "tencent"],
-      "多源对比时用的引擎",
-      translatorTypes,
-      "v10.2.4"
-    )
-  );
-
-  config.setRule(
-    "translator-double",
-    new ConstantGroupRule<TranslatorType>(
-      ["baidu-domain"],
-      "manually call",
-      translatorTypes
-    )
-  );
-
+  // 以下是一些菜单
   config.setRule(
     "focusRight",
     new GroupRule<Identifier>(
@@ -288,7 +186,6 @@ function initConfig(
         "settings",
         "exit",
       ],
-      "the context menu of focus mode",
       identifiers
     )
   );
@@ -297,9 +194,6 @@ function initConfig(
     "tray",
     new GroupRule<Identifier>(
       [
-        "translatorType",
-        "dictionaryType",
-        "hideDirect",
         "copySource",
         "copyResult",
         "pasteResult",
@@ -310,16 +204,14 @@ function initConfig(
         "incrementalCopy",
         "autoHide",
         "autoShow",
-        "autoFormat",
         "dragCopy",
         "stayTop",
         "listenClipboard",
         "settings",
-        "helpAndUpdate",
         "exit",
       ],
-      "the menu of tray",
-      identifiers
+      identifiers,
+      "v10.3.0"
     )
   );
 
@@ -341,39 +233,143 @@ function initConfig(
         "translateInput",
         "settings",
       ],
-      "the options of contrast mode",
       identifiers
     )
+  );
+
+  const predefinedActionButtons: ActionButton[] = [
+    {
+      icon: "mdi-view-quilt",
+      tooltip: "layoutButton",
+      left_click: "enumerateLayouts",
+      right_click: "incrementCounter",
+    },
+    {
+      left_click: "copyResult",
+      right_click: "copySource",
+      icon: "mdi-content-copy",
+      tooltip: "copyButton",
+    },
+    {
+      left_click: "minimize",
+      right_click: "closeWindow",
+      icon: "mdi-window-minimize",
+      tooltip: "closeButton",
+    },
+  ];
+
+  config.setRule("actionButtons", {
+    predefined: predefinedActionButtons,
+    check: (vals: ActionButton[]) =>
+      !vals.map(isValidActionButton).includes(false),
+    minimalVersion: "v10.2.5",
+  });
+
+  config.setRule(
+    "translatorType",
+    new UnionRule<TranslatorType>("google", translatorTypes)
+  );
+  config.setRule(
+    "dictionaryType",
+    new UnionRule<DictionaryType>("youdao", dictionaryTypes)
+  );
+  config.setRule("sourceLanguage", new UnionRule<Language>("en", languages));
+  config.setRule("targetLanguage", new UnionRule<Language>("zh-CN", languages));
+  config.setRule(
+    "googleMirror",
+    new TypeRule<string>("https://gtranslate.cdn.haah.net")
+  );
+  config.setRule(
+    "googleSource",
+    new UnionRule<GoogleSource>("simply", googleSources, "v10.2.5")
+  );
+  config.setRule(
+    "fallbackTranslator",
+    new UnionRule<TranslatorType>("baidu", translatorTypes)
+  );
+  config.setRule("pasteDelay", new TypeRule<number>(0.0));
+
+  config.setRule(
+    "translator-enabled", //所有启用的的引擎
+    new GroupRule<TranslatorType>(
+      [
+        "google",
+        "baidu",
+        "caiyun",
+        "keyan",
+        "bing",
+        "deepl",
+        "tencent",
+        "youdao",
+        "sogou",
+      ],
+      translatorTypes,
+      "v10.2.6"
+    )
+  );
+
+  config.setRule(
+    "translator-cache", //所有会自动查询并缓存结果以加速切换的翻译引擎
+    new GroupRule<TranslatorType>(
+      [
+        // "google",
+        // "baidu",
+        // "caiyun",
+        // "keyan",
+        // "bing",
+        // "deepl",
+        // "tencent",
+        // "youdao",
+        // "sogou",
+      ],
+      translatorTypes,
+      "v10.2.6"
+    )
+  );
+
+  config.setRule(
+    "translator-compare", //多源对比时用的引擎
+    new GroupRule<TranslatorType>(
+      [
+        "google",
+        "baidu",
+        "caiyun",
+        "keyan",
+        "bing",
+        "deepl",
+        "tencent",
+        "youdao",
+        "sogou",
+      ],
+      translatorTypes,
+      "v10.2.6"
+    )
+  );
+
+  config.setRule(
+    "translator-double",
+    new GroupRule<TranslatorType>([], translatorTypes)
   );
 
   //下面是N种翻译引擎
   config.setRule(
     "baidu",
-    new StructRule<KeyConfig>({ appid: "", key: "" }, "parameters of baidu")
+    new StructRule<KeyConfig>({ appid: "", key: "" })
   );
 
   config.setRule(
     "baidu-ocr",
-    new StructRule<KeyConfig>(
-      { app_id: "", api_key: "", secret_key: "" },
-      "parameters of baidu-ocr"
-    )
+    new StructRule<KeyConfig>({ app_id: "", api_key: "", secret_key: "" })
   );
 
   config.setRule(
     "pp-ocr",
-    new StructRule<KeyConfig>(
-      { cwd: "", config_name: "" },
-      "parameters of pp-ocr"
-    )
+    new StructRule<KeyConfig>({ cwd: "", config_name: "" })
   );
 
   config.setRule(
     "baidu-domain",
-    new StructRule<KeyConfig>(
-      { appid: "", key: "", domain: "" },
-      "parameters of baidu-domain"
-    )
+    new StructRule<KeyConfig>({ appid: "", key: "", domain: "" })
   );
 
   // config.setRule(
@@ -383,13 +379,13 @@ function initConfig(
 
   config.setRule(
     "google",
-    new StructRule<KeyConfig>({ token: "" }, "parameters of google")
+    new StructRule<KeyConfig>({ token: "" })
   );
 
-  // config.setRule(
-  //   "sogou",
-  //   new StructRule<KeyConfig>({ pid: "", key: "" }, "parameters of sogou")
-  // );
+  config.setRule(
+    "sogou",
+    new StructRule<KeyConfig>({ pid: "", key: "" })
+  );
 
   // config.setRule(
   //   "tencent",
@@ -399,71 +395,9 @@ function initConfig(
   //   )
   // );
 
-  // config.setRule(
-  //   "youdao",
-  //   new StructRule<KeyConfig>({ appKey: "", key: "" }, "parameters of youdao")
-  // );
-
-  //下面是三种布局
   config.setRule(
-    "horizontal",
-    new StructRule<LayoutConfig>(
-      {
-        diffFontSize: 15,
-        fontSize: 15,
-        x: 535,
-        y: 186,
-        height: 600,
-        width: 1094,
-      },
-      "layout config"
-    )
-  );
-
-  config.setRule(
-    "vertical",
-    new StructRule<LayoutConfig>(
-      {
-        diffFontSize: 15,
-        fontSize: 15,
-        x: 535,
-        y: 186,
-        height: 600,
-        width: 1094,
-      },
-      "layout config"
-    )
-  );
-
-  config.setRule(
-    "focus",
-    new StructRule<LayoutConfig>(
-      {
-        diffFontSize: 15,
-        fontSize: 15,
-        x: 535,
-        y: 186,
-        height: 600,
-        width: 1094,
-      },
-      "layout config"
-    )
-  );
-
-  config.setRule("pasteDelay", new TypeRule<number>(0.0, "auto copy delay"));
-
-  config.setRule(
-    "googleMirror",
-    new TypeRule<string>("https://gtranslate.cdn.haah.net", "google mirror")
-  );
-
-  config.setRule(
-    "googleSource",
-    new UnionRule<GoogleSource>(
-      "simply",
-      "google translation provider",
-      googleSources
-    )
+    "youdao",
+    new StructRule<KeyConfig>({ appKey: "", key: "" })
   );
 
   return config;

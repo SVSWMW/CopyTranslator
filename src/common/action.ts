@@ -15,8 +15,13 @@ import {
   structActionTypes,
   translatorTypes,
   translatorGroups,
-  Frequency,
+  Category,
   googleSources,
+  dragCopyModes,
+  categories,
+  displayTexts,
+  ConfigSnapshots,
+  SubMenuGenerator,
 } from "./types";
 import { dictionaryTypes } from "./dictionary/types";
 import { getLanguageLocales, Language } from "./translate/locale";
@@ -25,17 +30,28 @@ import bus from "../common/event-bus";
 import logger from "./logger";
 
 type Actions = Map<Identifier, ActionView>;
+type PostLocaleFunc = (x: string) => string;
 
 function subMenuGenerator(
   identifier: Identifier,
-  list: Array<string>
+  list: Array<string>,
+  needLocale: boolean = false, //是否需要把选项进行翻译
+  postLocaleFunc?: PostLocaleFunc
 ): SubActionView[] {
+  const l = store.getters.locale;
   return list.map((e) => {
     const id = compose([identifier, e]);
+    let label = e;
+    if (needLocale) {
+      label = l[e].toString();
+      if (postLocaleFunc != undefined) {
+        label = postLocaleFunc(label);
+      }
+    }
     return {
       id,
       type: "checkbox",
-      label: e,
+      label,
     };
   });
 }
@@ -43,7 +59,7 @@ function subMenuGenerator(
 const alias = new Map<string, string[]>([
   ["focus", ["layoutType|focus"]],
   ["contrast", ["layoutType|horizontal"]],
-  ["simulateIncrementCopy", ["incrementSelect", "simulateCopy"]],
+  ["simulateIncrementCopy", ["incrementCounter", "simulateCopy"]],
 ]);
 
 //兼容旧版本的
@@ -82,7 +98,7 @@ class ActionManager {
     }
     const action = this.actions.get(identifier) as ActionView;
     if (action.subMenuGenerator) {
-      action.submenu = action.subMenuGenerator();
+      action.submenu = action.subMenuGenerator(action.id);
     }
     return action;
   }
@@ -100,11 +116,11 @@ class ActionManager {
   init() {
     const config = this.config;
     //普通的按钮，执行一项操作
-    function normalAction(id: Identifier): ActionInitOpt {
+    function normalAction(id: Identifier, cate?: Category): ActionInitOpt {
       return {
         type: "normal",
         id,
-        tooltip: id,
+        cate,
       };
     }
     //原生角色
@@ -113,58 +129,95 @@ class ActionManager {
         role: role,
         id: role,
         type: "normal",
-        tooltip: role,
       };
     }
     //设置常量
-    function constantAction(identifier: Identifier): ActionInitOpt {
+    function constantAction(
+      identifier: Identifier,
+      cate?: Category
+    ): ActionInitOpt {
       return {
         actionType: "constant",
         id: identifier,
-        tooltip: identifier,
+        cate,
       };
     }
 
     //切换状态的动作
     function switchAction(
       identifier: Identifier,
-      freq: Frequency = "basic"
+      cate: Category = "basic"
     ): ActionInitOpt {
       return {
         type: "checkbox",
         id: identifier,
-        tooltip: config.getTooltip(identifier),
-        freq: freq,
+        cate,
       };
     }
 
     //列表类型，是select的一种特化
-    function listAction(identifier: Identifier, list: any): ActionInitOpt {
-      return {
-        type: "submenu",
-        id: identifier,
-        tooltip: config.getTooltip(identifier),
-        submenu: subMenuGenerator(identifier, list),
-      };
+    function listAction(
+      identifier: Identifier,
+      list: any,
+      cate?: Category,
+      needLocale: boolean = false,
+      postLocaleFunc?: PostLocaleFunc
+    ): ActionInitOpt {
+      if (!needLocale) {
+        return {
+          type: "submenu",
+          id: identifier,
+          submenu: subMenuGenerator(identifier, list, false),
+          cate,
+        };
+      } else {
+        return {
+          type: "submenu",
+          id: identifier,
+          cate,
+          subMenuGenerator: () =>
+            subMenuGenerator(identifier, list, true, postLocaleFunc),
+        };
+      }
     }
 
-    //自动生成子菜单
+    //动态生成子菜单
     function selectAction(
       identifier: Identifier,
-      subMenuGenerator: () => Array<SubActionView>
+      subMenuGenerator: SubMenuGenerator,
+      cate?: Category
     ): ActionInitOpt {
       return {
         type: "submenu",
         id: identifier,
         subMenuGenerator: subMenuGenerator,
-        tooltip: config.getTooltip(identifier),
+        cate,
       };
     }
 
-    function configAction(identifier: Identifier): ActionInitOpt {
+    //含参数的normal action
+    function paramNormalAction(
+      identifier: Identifier,
+      subMenuGenerator: SubMenuGenerator,
+      cate?: Category
+    ): ActionInitOpt {
       return {
-        actionType: "config",
+        actionType: "param_normal",
         id: identifier,
+        subMenuGenerator: subMenuGenerator,
+        cate,
+      };
+    }
+
+    function typeAction(
+      actionType: ActionInitOpt["actionType"],
+      identifier: Identifier,
+      cate?: Category
+    ): ActionInitOpt {
+      return {
+        actionType: actionType,
+        id: identifier,
+        cate,
       };
     }
 
@@ -199,17 +252,15 @@ class ActionManager {
       };
     }
 
-    const localeGenerator = (id: Identifier) => {
-      return () => {
-        const locales = store.getters.locales.map((locale: any) => {
-          return {
-            id: compose([id, locale.lang]),
-            label: locale.localeName,
-            type: "checkbox",
-          };
-        });
-        return locales;
-      };
+    const localeGenerator: SubMenuGenerator = (id: string) => {
+      const locales = store.getters.locales.map((locale: any) => {
+        return {
+          id: compose([id, locale.lang]),
+          label: locale.localeName,
+          type: "checkbox",
+        };
+      });
+      return locales;
     };
     const delays = [
       0.0,
@@ -227,13 +278,55 @@ class ActionManager {
       1.5,
       2.0,
     ];
+    const heights = [];
+    for (let i = 1; i < 41; i++) {
+      heights.push(i);
+    }
 
-    this.append(listAction("hideDirect", hideDirections));
-    this.append(listAction("translatorType", translatorTypes));
-    this.append(listAction("dictionaryType", dictionaryTypes));
-    this.append(listAction("layoutType", layoutTypes));
-    this.append(listAction("colorMode", colorModes));
-    this.append(listAction("fallbackTranslator", translatorTypes));
+    const getConfigSnapshotNames: SubMenuGenerator = (id: string) => {
+      const names = [
+        ...Object.keys(config.get<ConfigSnapshots>("configSnapshots")),
+      ];
+      return names.map((option) => {
+        return {
+          id: compose([id, option]),
+          type: "normal",
+          label: option,
+        };
+      });
+    };
+
+    this.append(listAction("translatorType", translatorTypes, "translation"));
+    this.append(listAction("dictionaryType", dictionaryTypes, "translation"));
+    this.append(
+      listAction("fallbackTranslator", translatorTypes, "translation")
+    );
+    this.append(listAction("pasteDelay", delays, "translation"));
+    this.append(listAction("googleSource", googleSources, "translation"));
+    this.append(constantAction("googleMirror", "translation"));
+
+    this.append(typeAction("color_picker", "primaryColor", "appearance"));
+    this.append(constantAction("contentFontFamily", "appearance"));
+    this.append(constantAction("interfaceFontFamily", "appearance"));
+    this.append(listAction("colorMode", colorModes, "appearance"));
+
+    this.append(
+      listAction(
+        "transparency",
+        [0.0, 0.1, 0.2, 0.3, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+        "appearance"
+      )
+    );
+    this.append(normalAction("newConfigSnapshot", "appearance"));
+    this.append(
+      paramNormalAction("configSnapshot", getConfigSnapshotNames, "appearance")
+    );
+
+    this.append(listAction("titlebarHeight", heights, "appearance"));
+    this.append(switchAction("penerate", "appearance"));
+    this.append(selectAction("localeSetting", localeGenerator, "appearance"));
+    this.append(listAction("hideDirect", hideDirections, "appearance"));
+    this.append(listAction("layoutType", layoutTypes, "appearance"));
 
     this.append(switchAction("listenClipboard"));
     this.append(switchAction("stayTop"));
@@ -270,10 +363,12 @@ class ActionManager {
     this.append(normalAction("focus"));
     this.append(normalAction("contrast"));
     this.append(normalAction("capture"));
-    this.append(normalAction("restoreDefault"));
-    this.append(normalAction("font+"));
-    this.append(normalAction("font-"));
     this.append(normalAction("checkUpdate"));
+
+    this.append(normalAction("changelog"));
+    this.append(normalAction("userManual"));
+    this.append(normalAction("homepage"));
+
     this.append(normalAction("translate"));
     this.append(normalAction("selectionQuery"));
     this.append(normalAction("hideWindow"));
@@ -281,7 +376,7 @@ class ActionManager {
     this.append(normalAction("showWindow"));
     this.append(normalAction("translateClipboard"));
     this.append(normalAction("doubleCopyTranslate"));
-    this.append(normalAction("incrementSelect"));
+    this.append(normalAction("incrementCounter"));
     this.append(normalAction("simulateCopy"));
     this.append(normalAction("translateInput"));
     this.append(normalAction("simpleDebug"));
@@ -289,17 +384,25 @@ class ActionManager {
 
     //引擎配置
     structActionTypes.forEach((id) => {
-      this.append(configAction(id));
+      this.append(typeAction("config", id));
     });
 
+    this.append(typeAction("config", "actionButtons"));
+
+    //引擎组设置
     translatorGroups.forEach((id) => {
-      this.append(configAction(id));
+      this.append(typeAction("multi_select", id));
     });
 
-    //role action
-    roles.forEach((role) => {
-      this.append(roleAction(role));
+    //显示文本的动作
+    displayTexts.forEach((id) => {
+      this.append(typeAction("prompt", id));
     });
+
+    roles //role action
+      .forEach((role) => {
+        this.append(roleAction(role));
+      });
 
     this.append(
       selectAction(
@@ -314,27 +417,64 @@ class ActionManager {
         createLanguageGenerator("targetLanguage", false)
       )
     );
-    this.append(
-      selectAction("localeSetting", localeGenerator("localeSetting"))
-    );
 
-    this.append(listAction("pasteDelay", delays));
-    this.append(listAction("googleSource", googleSources));
-    this.append(constantAction("googleMirror"));
+    this.append(
+      listAction("dragCopyMode", dragCopyModes, undefined, true, (x) =>
+        x.replace("拖拽复制", "").replace("DragCopy", "").trim()
+      )
+    ); //TODO 很丑的实现，但是不是很想改
+
+    this.append(typeAction("config", "dragCopyWhiteList"));
+    this.append(typeAction("config", "dragCopyBlackList"));
 
     this.append(normalAction("settings"));
     this.append(normalAction("helpAndUpdate"));
     this.append(normalAction("exit"));
-    this.append(normalAction("editConfigFile"));
-    this.append(normalAction("showConfigFolder"));
+
+    this.append(normalAction("editConfigFile", "other"));
+    this.append(normalAction("showConfigFolder", "other"));
+    this.append(normalAction("restoreDefault", "other"));
+    this.append(normalAction("restoreMultiDefault"));
+    this.append(normalAction("enumerateLayouts"));
   }
 
-  getKeys(optionType: MenuActionType): Array<Identifier> {
+  getKeys(optionType: MenuActionType | Category): Array<Identifier> {
     let contain: Array<Identifier> = [];
     const keys = Array.from(this.actions.keys());
+    const filterByCate = (cate: Category) => {
+      return (x: Identifier) => this.getAction(x).cate === cate;
+    };
     switch (optionType) {
+      case "translatorGroups":
+        contain = Array.from(translatorGroups);
+        break;
       case "allActions":
-        contain = keys;
+        const invalidTypes: ActionInitOpt["actionType"][] = [
+          "prompt",
+          "submenu",
+          "multi_select",
+          "config",
+          "constant",
+        ];
+        const invalidKeys: Identifier[] = [
+          "simpleDebug",
+          "notify",
+          "toast",
+          "selectionQuery",
+          "simulateCopy",
+          "welcome",
+          "doubleCopyTranslate",
+          "restoreMultiDefault",
+        ];
+        contain = keys.filter((x) => {
+          const action = this.getAction(x);
+          return (
+            (!invalidKeys.includes(x) &&
+              !invalidTypes.includes(action.actionType) &&
+              !action.role) ||
+            x == "minimize"
+          );
+        });
         break;
       case "focusRight":
         contain = this.config.get("focusRight");
@@ -346,9 +486,17 @@ class ActionManager {
         contain = this.config.get("tray");
         break;
       case "options":
-        contain = keys.filter((x) =>
-          ["submenu", "constant"].includes(this.getAction(x).actionType)
-        );
+        contain = keys.filter((x) => {
+          return (
+            ["submenu", "constant"].includes(this.getAction(x).actionType) &&
+            ![
+              "dragCopyMode",
+              "sourceLanguage",
+              "targetLanguage",
+              "layoutType",
+            ].includes(x)
+          );
+        });
         break;
       case "focusContext":
         contain = ["copy", "paste", "cut", "clear"];
@@ -356,34 +504,19 @@ class ActionManager {
       case "contrastContext":
         contain = ["copy", "paste", "cut", "clear", "copyResult", "copySource"];
         break;
-      case "draggableOptions":
-        contain = keys.filter(
-          (x) => this.getAction(x).actionType !== "constant"
-        );
       default:
-        throw "wrong";
+        if (categories.includes(optionType as Category)) {
+          contain = keys.filter(filterByCate(optionType as Category));
+          if (optionType === "appearance") {
+            contain = ["textAdjustPrompt", ...contain]; //加一个关于文本大小的调节提示
+          } else if (optionType === "translation") {
+            contain = ["googlePrompt", ...contain]; //加一个关于谷歌的提示
+          }
+        } else {
+          throw "wrong";
+        }
     }
     return contain.filter((key) => keys.includes(key));
-  }
-
-  getGroups(optionType: MenuActionType): { [freq: string]: Array<Identifier> } {
-    let retval = {
-      basic: Array<Identifier>(),
-      advance: Array<Identifier>(),
-    };
-    const keys = Array.from(this.actions.keys());
-    switch (optionType) {
-      case "switches":
-        for (const key of keys) {
-          const action = this.getAction(key);
-          if (action.actionType === "checkbox") {
-            retval[action.freq as Frequency].push(key);
-          }
-        }
-        retval["advance"].push("restoreDefault");
-        break;
-    }
-    return retval;
   }
 }
 

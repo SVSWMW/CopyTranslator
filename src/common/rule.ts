@@ -1,4 +1,4 @@
-import { Identifier, LayoutType } from "./types";
+import { Identifier } from "./types";
 
 export const colorRules = new Map<Identifier, number>([
   ["autoCopy", 1],
@@ -24,46 +24,68 @@ export type LayoutConfig = {
   y: number;
   height: number;
   width: number;
-  fontSize: number;
+  sourceFontSize?: number;
+  resultFontSize: number;
   diffFontSize: number;
+  dictFontSize: number;
+  ratio?: number;
 };
 
 export type KeyConfig = { [key: string]: string };
 
 interface Rule {
   predefined: any;
-  tooltip: string;
   check?: CheckFuction; // 检查是否有效的函数
   minimalVersion?: string;
+  needSave?: boolean;
 }
 
 class GroupRule<T> implements Rule {
   predefined: Array<T>;
-  tooltip: string;
   check: CheckFuction;
   minimalVersion?: string;
   constructor(
     predefined: Array<T>,
-    msg: string,
     options: readonly T[],
     minimalVersion?: string
   ) {
     this.predefined = predefined;
-    this.tooltip = msg;
     this.minimalVersion = minimalVersion;
     this.check = (value: Array<T>) => {
-      return !value.map((item) => options.includes(item)).includes(false);
+      if (!value.map((item) => options.includes(item)).includes(false)) {
+        return true;
+      } else {
+        for (const item of value) {
+          if (!options.includes(item)) {
+            console.log("check fail, invalid item", item);
+          }
+        }
+        return false;
+      }
     };
   }
 }
 
+// class CustomGroupRule<T> implements Rule {
+//   predefined: Array<T>;
+//   check: CheckFuction;
+//   minimalVersion?: string;
+//   constructor(
+//     predefined: Array<T>,
+//     check: CheckFuction,
+//     minimalVersion?: string
+//   ) {
+//     this.predefined = predefined;
+//     this.minimalVersion = minimalVersion;
+//     this.check = check;
+//   }
+// }
+
 class ConstantGroupRule<T> implements Rule {
   predefined: Array<T>;
-  tooltip: string;
   check: CheckFuction;
-  constructor(predefined: Array<T>, msg: string, options: readonly T[]) {
+  constructor(predefined: Array<T>, options: readonly T[]) {
     this.predefined = predefined;
-    this.tooltip = msg;
     this.check = (value: Array<T>) => {
       return false;
     };
@@ -72,11 +94,11 @@ class ConstantGroupRule<T> implements Rule {
 
 export class UnionRule<T> implements Rule {
   predefined: any;
-  tooltip: string;
   check: CheckFuction;
-  constructor(predefined: T, msg: string, options: readonly T[]) {
+  minimalVersion?: string;
+  constructor(predefined: T, options: readonly T[], minimalVersion?: string) {
     this.predefined = predefined;
-    this.tooltip = msg;
+    this.minimalVersion = minimalVersion;
     this.check = function (value: T) {
       return options.includes(value);
     };
@@ -85,28 +107,24 @@ export class UnionRule<T> implements Rule {
 
 class TypeRule<T> implements Rule {
   predefined: T;
-  tooltip: string;
   check?: CheckFuction;
-
-  constructor(predefined: T, msg: string, check?: CheckFuction) {
+  constructor(predefined: T, check?: CheckFuction) {
     this.predefined = predefined;
-    this.tooltip = msg;
     this.check = function (value) {
       let result: boolean = typeof value === typeof predefined;
-      if (result && check) {
+      if (check != undefined) {
         result = result && check(value);
       }
       return result;
     };
   }
 }
+
 class StructRule<T extends { [key: string]: any }> implements Rule {
   predefined: T;
-  tooltip: string;
   check: CheckFuction;
-  constructor(predefined: T, msg: string) {
+  constructor(predefined: T) {
     this.predefined = predefined;
-    this.tooltip = msg;
     this.check = function (value: T) {
       for (const key of Object.keys(predefined)) {
         if (

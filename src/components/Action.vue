@@ -1,46 +1,162 @@
 <template>
-  <div v-if="action">
-    <v-switch
-      v-if="action.actionType === 'checkbox'"
-      v-model="value"
-      class="myswitch"
-      :label="trans[action.id]"
-    ></v-switch>
-    <div v-else-if="action.actionType === 'constant'">
-      <p style="margin: 0px;">{{ trans[identifier] }}</p>
-      <v-text-field v-model="value"></v-text-field>
-    </div>
-    <div v-else-if="action.actionType === 'submenu'">
-      <p style="margin: 0px;">{{ trans[identifier] }}</p>
-      <v-select
-        v-model="command"
-        :items="action.submenu"
-        item-text="label"
-        item-value="id"
-        style="margin: 0px; padding: 0px;"
-      >
-      </v-select>
-    </div>
-    <div v-else-if="action.actionType === 'normal'">
-      <v-btn @click="callback(action.id)" width="100%" style="margin-top: 4px;">
-        {{ trans[action.id] }}
-      </v-btn>
-    </div>
+  <div>
+    <v-tooltip v-if="action" bottom open-delay="100" :disabled="!tooltip">
+      <template v-slot:activator="{ on, attrs }">
+        <div class="actionStyle" v-bind="attrs" v-on="on">
+          <v-switch
+            v-if="action.actionType === 'checkbox'"
+            v-model="value"
+            class="myswitch"
+            :label="trans[action.id]"
+          ></v-switch>
+          <v-dialog
+            v-else-if="action.id === 'newConfigSnapshot'"
+            v-model="dialog"
+          >
+            <template v-slot:activator="{ on, attrs }">
+              <SimpleButton v-bind="attrs" v-on="on">
+                {{ trans[identifier] }}
+              </SimpleButton>
+            </template>
+            <v-card>
+              <v-text-field
+                class="mytext"
+                v-model="text"
+                :rules="rules"
+                label="请输入快照名"
+              ></v-text-field>
+              <SimpleButton
+                @click="
+                  callback(identifier, text);
+                  dialog = false;
+                  text = '';
+                "
+                :disabled="
+                  rules.map((rule) => rule(text) == true).includes(false)
+                "
+                >{{ trans[identifier] }}</SimpleButton
+              >
+            </v-card>
+          </v-dialog>
+          <v-menu offset-y v-else-if="action.actionType === 'param_normal'">
+            <template v-slot:activator="{ on, attrs }">
+              <SimpleButton v-bind="attrs" v-on="on">
+                {{ trans[action.id] }}
+              </SimpleButton>
+            </template>
+            <v-list>
+              <v-list-item
+                v-for="(item, index) in action.submenu"
+                :key="index"
+                @click="callback(item.id)"
+              >
+                <v-list-item-title>{{ item.label }}</v-list-item-title>
+              </v-list-item>
+            </v-list>
+          </v-menu>
+          <v-dialog v-else-if="action.actionType == 'color_picker'">
+            <template v-slot:activator="{ on, attrs }">
+              <SimpleButton v-bind="attrs" v-on="on">
+                {{ trans[action.id] }}
+              </SimpleButton>
+            </template>
+            <v-color-picker
+              v-model="value"
+              flat
+              :swatches="swatches"
+              show-swatches
+              style="margin: 10px auto;"
+            ></v-color-picker>
+          </v-dialog>
+          <p
+            v-else-if="action.actionType === 'prompt'"
+            style="text-align: left; font-weight: bold;"
+            class="pStyle"
+          >
+            {{ trans[action.id] }}
+          </p>
+          <MultiSelect
+            v-else-if="action.actionType === 'multi_select'"
+            :identifier="action.id"
+          ></MultiSelect>
+          <div v-else-if="action.actionType === 'constant'">
+            <p class="pStyle">{{ trans[identifier] }}</p>
+            <v-text-field
+              style="marigin-top: 0px; padding-top: 0px;"
+              v-model="value"
+              class="mytext"
+            ></v-text-field>
+          </div>
+          <div v-else-if="action.actionType === 'submenu'">
+            <p class="pStyle">
+              {{ trans[identifier] }}
+            </p>
+            <v-select
+              v-model="command"
+              :items="action.submenu"
+              item-text="label"
+              item-value="id"
+              style="padding: 2px; padding-top: 0px;"
+              class="myswitch"
+            >
+            </v-select>
+          </div>
+          <div v-else-if="action.actionType === 'normal'">
+            <SimpleButton @click="callback(action.id)">
+              {{ trans[action.id] }}
+            </SimpleButton>
+          </div>
+        </div>
+      </template>
+      <span>{{ tooltip }}</span>
+    </v-tooltip>
   </div>
 </template>
 
 <script lang="ts">
-import { Identifier, compose, ActionView } from "../common/types";
-import { Prop, Component, Watch, Vue } from "vue-property-decorator";
+import { Identifier, compose, ActionView, swatches } from "../common/types";
+import { Prop, Component } from "vue-property-decorator";
+import MultiSelect from "./MultiSelect.vue";
 import bus from "../common/event-bus";
+import Base from "@/components/Base.vue";
+import SimpleButton from "./SimpleButton.vue";
 
-@Component
-export default class Action extends Vue {
+@Component({
+  components: { MultiSelect, SimpleButton },
+})
+export default class Action extends Base {
   @Prop({ default: undefined }) readonly identifier!: Identifier;
   action: ActionView = this.$controller.action.getAction(this.identifier);
 
-  callback(...args: any[]) {
-    bus.at("dispatch", ...args);
+  swatches = swatches; //调色盘的预定义颜色
+  dialog: boolean = false;
+
+  text: string = "";
+
+  rules = [
+    (value: string) => !!value || "Required.",
+    (value: string) => {
+      if (value == undefined) {
+        return true;
+      } else {
+        if (value.includes("|")) {
+          return 'Symbol "|" should not be used in snapshot name';
+        }
+        return true;
+      }
+    },
+  ];
+
+  get tooltip(): undefined | string {
+    if (
+      !this.action ||
+      this.action.actionType === "normal" ||
+      this.action.actionType === "prompt"
+    ) {
+      return undefined;
+    }
+    const tp = this.trans[`<tooltip>${this.action.id}`];
+    return tp;
   }
 
   get command() {
@@ -63,12 +179,8 @@ export default class Action extends Vue {
     this.action = this.$controller.action.getAction(this.identifier);
   }
 
-  get trans() {
-    return this.$store.getters.locale;
-  }
-
   mounted() {
-    if (this.action?.actionType == "submenu") {
+    if (["submenu", "param_normal"].includes(this.action.actionType)) {
       bus.gon(this.identifier, this.sync);
     }
   }
@@ -77,12 +189,35 @@ export default class Action extends Vue {
 
 <style scoped>
 .myswitch {
-  margin: 0px;
+  margin-top: 1px;
+  margin-left: 5px;
+  margin-right: 5px;
 }
 .myswitch >>> .v-messages {
   min-height: 0px;
 }
 .myswitch >>> .v-input__slot {
+  margin-bottom: 1px !important;
+}
+.myswitch >>> .v-select__selection--comma {
+  margin-bottom: 0px;
+  min-height: 20px;
+}
+.actionStyle {
+  margin-top: 0px;
+  margin-left: 2px;
+  margin-right: 2px;
+  text-align: center;
+}
+.pStyle {
+  margin-bottom: 4px;
+  text-align: left;
+}
+
+/* .mytext >>> .v-messages {
+  min-height: 0px;
+} */
+.mytext >>> .v-input__slot {
   margin-bottom: 0px !important;
 }
 </style>

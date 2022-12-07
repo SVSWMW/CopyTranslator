@@ -1,17 +1,17 @@
 <template>
   <div>
-    <div v-for="(vulue, key) in config" :key="key">
+    <div v-for="(_, key) in keyConfig" :key="key">
       <p>{{ key }}</p>
       <v-text-field
-        v-model="config[key]"
-        @change="sync(key)"
+        v-model="keyConfig[key]"
+        @change="sync()"
         v-if="!isSelect(key)"
       ></v-text-field>
       <v-select
         v-else
-        v-model="config[key]"
+        v-model="keyConfig[key]"
         :items="domains"
-        @change="sync(key)"
+        @change="sync()"
         style="margin: 0px; padding: 0px;"
       >
       </v-select>
@@ -20,33 +20,25 @@
 </template>
 
 <script lang="ts">
-import { domains, Identifier, compose, ActionView } from "../common/types";
-import { Prop, Component, Watch, Vue } from "vue-property-decorator";
-import bus from "../common/event-bus";
+import { domains, Identifier } from "../common/types";
+import { Prop, Component } from "vue-property-decorator";
+import Base from "./Base.vue";
 
 @Component
-export default class KeyConfig extends Vue {
+export default class KeyConfig extends Base {
   @Prop({ default: undefined }) readonly identifier!: Identifier;
   readonly domains = domains;
 
-  callback(...args: any[]) {
-    bus.at("dispatch", ...args);
-  }
-
-  get config() {
+  get keyConfig() {
     return this.$store.state.config[this.identifier];
   }
 
-  isSelect(key: string) {
+  isSelect(key: string | number) {
     return this.identifier == "baidu-domain" && key == "domain";
   }
 
-  sync(key: string) {
-    this.callback(this.identifier, this.config);
-  }
-
-  get trans() {
-    return this.$store.getters.locale;
+  sync() {
+    this.callback(this.identifier, this.keyConfig);
   }
 }
 </script>

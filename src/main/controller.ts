@@ -1,28 +1,33 @@
-import { WindowMangaer } from "./views/manager";
+import { WindowManager } from "./views/manager";
 import { eventListener } from "./event-listener";
 import { MenuManager } from "./menu-manager";
-import { Identifier, authorizeKey } from "../common/types";
+import {
+  Identifier,
+  authorizeKey,
+  RouteActionType,
+  MenuActionType,
+  Category,
+  layoutTypes,
+  LayoutType,
+} from "../common/types";
 import { startService } from "../proxy/main";
 import { ShortcutManager } from "./shortcut";
-import { app, BrowserWindow } from "electron";
+import { app, shell } from "electron";
 import store, { observers, restoreFromConfig } from "../store";
 import { TranslateController } from "./translate-controller";
 import { l10n, L10N } from "./l10n";
-import actionLinks, {
-  showDragCopyWarning,
-  showHostsWarning,
-} from "./views/dialog";
+import actionLinks, { showDragCopyWarning } from "./views/dialog";
 import { resetAllConfig } from "./file-related";
 import { MainController } from "../common/controller";
 import { UpdateChecker } from "./views/update";
-import config from "@/common/configuration";
-import eventBus from "@/common/event-bus";
 import simulate from "./simulate";
 import logger from "@/common/logger";
 import { keyan } from "@/common/translate/keyan";
+import { constants } from "../common/constant";
+import { DragCopyMode } from "@/common/types";
 
 class Controller extends MainController {
-  win: WindowMangaer = new WindowMangaer(this);
+  win: WindowManager = new WindowManager(this);
   menu: MenuManager = new MenuManager(this);
   updater = new UpdateChecker(this);
   shortcut: ShortcutManager = new ShortcutManager();
@@ -37,18 +42,6 @@ class Controller extends MainController {
     this.bindLinks(actionLinks);
   }
 
-  changeFontSize(increase: boolean) {
-    const layoutType = config.get("layoutType");
-    const layoutConfig = config.get(layoutType);
-    const delta = increase ? 1 : -1;
-    if (config.get("multiSource")) {
-      layoutConfig.diffFontSize += delta;
-    } else {
-      layoutConfig.fontSize += delta;
-    }
-    config.set(layoutType, layoutConfig);
-  }
-
   simpleDebug() {
     keyan
       .translate(
@@ -61,13 +54,33 @@ class Controller extends MainController {
       });
   }
 
+  restoreMultiDefault(optionType: MenuActionType | Category) {
+    const keys = this.action.getKeys(optionType);
+    for (const key of keys) {
+      this.config.reset(key as Identifier); //带参时仅重置特定项
+    }
+  }
+
+  enumerateLayouts(isLeft: boolean) {
+    const index = layoutTypes.findIndex(
+      (x) => x === this.config.get<LayoutType>("layoutType")
+    );
+    let newIndex: number;
+    if (isLeft) {
+      newIndex = (index + 1) % layoutTypes.length;
+    } else {
+      newIndex = (index + layoutTypes.length - 1) % layoutTypes.length;
+    }
+    this.set("layoutType", layoutTypes[newIndex]);
+  }
+
   handle(identifier: Identifier, param: any = null): boolean {
     switch (identifier) {
-      case "font+":
-        this.changeFontSize(true);
+      case "newConfigSnapshot":
+        this.config.newSnapshot(param as string);
         break;
-      case "font-":
-        this.changeFontSize(false);
+      case "configSnapshot":
+        this.config.resumeSnapshot(param as string);
         break;
       case "exit":
         this.handle("closeWindow", null);
@@ -76,23 +89,46 @@ class Controller extends MainController {
       case "settings":
         this.win.get("settings").show();
         break;
+      case "enumerateLayouts":
+        this.enumerateLayouts(!!param);
+        break;
+      case "restoreMultiDefault":
+        this.restoreMultiDefault(param);
+        break;
       case "restoreDefault":
-        this.resotreDefaultSetting();
+        if (param == null) {
+          this.resotreDefaultSetting();
+        } else {
+          this.config.reset(param as Identifier); //带参时仅重置特定项
+        }
         break;
       case "checkUpdate":
         this.updater.check();
         break;
+      case "homepage":
+        shell.openExternal(constants.homepage);
+        break;
+      case "changelog":
+        shell.openExternal(constants.changelogs);
+        break;
+      case "userManual":
+        shell.openExternal(constants.wiki);
+        break;
       case "hideWindow":
-        this.win.get("contrast").hide();
+        this.win.mainWindow.hide();
+        break;
+      case "close":
+        this.win.closeByName(param as RouteActionType);
         break;
       case "closeWindow":
-        this.win.close();
+        this.win.saveBounds(); //修复直接退出时没有保存布局设置的问题
+        this.win.closeByName("contrast");
         break;
       case "showWindow":
         this.win.showWindow();
         break;
       case "minimize":
-        this.win.get("contrast").minimize();
+        this.win.mainWindow.minimize();
         break;
       case "simpleDebug":
         this.simpleDebug();
@@ -115,17 +151,9 @@ class Controller extends MainController {
     this.restoreFromConfig(); //恢复设置
     eventListener.bind(); //绑定事件
     startService(this, authorizeKey); // 创建代理服务
-    this.win.get("contrast"); //创建主窗口
+    this.win.mainWindow; //创建主窗口
     this.shortcut.init();
     this.menu.init();
-    if (this.get("showGoogleMessage")) {
-      console.log("showGoogleMessage");
-      showHostsWarning(this);
-    }
-    if (this.get("isNewUser")) {
-      //显示启动页
-      eventBus.at("dispatch", "welcome");
-    }
   }
 
   async onExit() {
@@ -137,24 +165,29 @@ class Controller extends MainController {
 
   postSet(identifier: Identifier, value: any): boolean {
     switch (identifier) {
+      case "layoutType":
+        this.win.syncBounds();
+        break;
+      case "ignoreMouseEvents":
+        this.win.setIgnoreMouseEvents(value as boolean);
+        break;
       case "localeSetting":
         this.l10n.updateLocale(this.get("localeSetting"));
         break;
       case "dragCopy":
-        if (value == true && !this.get("neverShow")) {
+        if (
+          value == true &&
+          this.get<DragCopyMode>("dragCopyMode") === "dragCopyGlobal" &&
+          !this.get("neverShow") //只在全局模式才show出来
+        ) {
           showDragCopyWarning(this);
         }
-        break;
-      case "colorMode":
-        BrowserWindow.getAllWindows().forEach((window) => {
-          window.reload();
-        });
         break;
       case "stayTop":
         this.win.setStayTop(value);
         break;
       case "skipTaskbar":
-        this.win.get("contrast").setSkipTaskbar(value);
+        this.win.mainWindow.setSkipTaskbar(value);
         break;
       case "openAtLogin":
         app.setLoginItemSettings({

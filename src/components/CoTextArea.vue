@@ -1,41 +1,41 @@
 <template>
-  <div>
-    <div contenteditable="true">
-      <div v-if="!config['contrastDict'] || !dictResult.valid">
-        <div v-if="chineseStyle">
-          <span
-            v-for="(val, key) in sentences"
-            :key="key"
-            @mouseover="mouseOver(key)"
-            style="display: block;"
-          >
+  <div contenteditable="true">
+    <div style="height: 100%;">
+      <div v-if="chineseStyle">
+        <span
+          v-for="(val, key) in sentences"
+          :key="key"
+          @mouseover="mouseOver(key)"
+          style="display: block;"
+        >
+          {{ val }}
+        </span>
+      </div>
+      <div v-else>
+        <div
+          v-for="(val, key) in sentences"
+          :key="key"
+          @mouseover="mouseOver(key)"
+        >
+          <span style="display: block; padding-bottom: 5px;">
             {{ val }}
           </span>
         </div>
-        <div v-else>
-          <div
-            v-for="(val, key) in sentences"
-            :key="key"
-            @mouseover="mouseOver(key)"
-          >
-            <span style="display: block;">
-              {{ val }}
-            </span>
-            <br />
-          </div>
-        </div>
       </div>
-      <DictResultPanel
-        v-if="config['contrastDict'] && dictResult.valid"
-      ></DictResultPanel>
     </div>
     <div style="font-size: 15px; position: absolute; right: 0px; bottom: 5px;">
-      <div v-if="sharedResult.engine !== currentEngine && !dictResult.valid">
+      <div
+        v-if="
+          sharedResult.engine !== '' &&
+          sharedResult.engine !== currentEngine &&
+          !dictResult.valid &&
+          !multiSource
+        "
+      >
         <a>
           <span>
-            {{ currentEngine }}引擎不支持此语言，此结果由备用引擎{{
-              sharedResult.engine
-            }}提供
+            {{ currentEngine }}&nbsp;{{ trans["fallbackPrompt1"]
+            }}{{ sharedResult.engine }}{{ trans["fallbackPrompt2"] }}
           </span>
         </a>
       </div>
@@ -49,7 +49,7 @@
 </template>
 
 <script lang="ts">
-import { Mixins, Component, Vue, Watch } from "vue-property-decorator";
+import { Mixins, Component, Vue } from "vue-property-decorator";
 import DictResultPanel from "./DictResult.vue";
 import BaseView from "./BaseView.vue";
 

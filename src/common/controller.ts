@@ -1,4 +1,4 @@
-import { Identifier } from "./types";
+import { Identifier, ActionInitOpt } from "./types";
 import config, { ConfigParser } from "./configuration";
 import { Promisified } from "@/proxy/renderer";
 import { ActionManager } from "./action";
@@ -10,6 +10,13 @@ type Handler1 = () => void;
 type Handler2 = (controller: MainController | RenController) => void;
 
 export type Handler = Handler1 | Handler2;
+
+type Args = {
+  identifier: Identifier;
+  param: any;
+  type: ActionInitOpt["actionType"];
+  isMain: boolean;
+};
 
 export abstract class CommonController {
   config: ConfigParser = config;
@@ -28,7 +35,6 @@ export abstract class CommonController {
   }
 
   set(identifier: Identifier, value: any): boolean {
-    bus.gat("preSet", identifier, value);
     return this.config.set(identifier, value);
   }
 
@@ -50,11 +56,12 @@ export abstract class CommonController {
   }
 
   bind() {
-    bus.gon("callback", (args: any) => {
-      const { identifier, param, type, isMain: main } = args;
-      console.debug("action triggered", identifier, param, type, isMain);
-      switch (type) {
+    bus.gon("callback", (args: Args) => {
+      const { identifier, param, type: actionType, isMain: main } = args;
+      console.debug("action triggered", identifier, param, actionType, main);
+      switch (actionType) {
         case "normal":
+        case "param_normal":
           if (
             !(
               this.handleWithLinks(identifier, param) ||
@@ -69,15 +76,23 @@ export abstract class CommonController {
         case "submenu":
         case "constant":
         case "config":
+        case "color_picker":
+        case "multi_select":
           this.set(identifier, param);
           break;
         case "checkbox":
           if (param == undefined) {
             this.set(identifier, !this.get(identifier));
           } else {
-            this.set(identifier, param);
+            if (typeof param == "boolean") {
+              this.set(identifier, param);
+            } else {
+              throw `invalid type of param for ${identifier}, the value is ${param}, the type if ${typeof param}`;
+            }
           }
           break;
+        default:
+          throw `Unhandled Action Type <${actionType}>`;
       }
     });
   }

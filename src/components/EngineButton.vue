@@ -1,24 +1,33 @@
 <template>
-  <v-btn
-    v-bind:class="[engineClass, 'btnBase']"
-    @click="switchTranslator"
-    color="white"
-    x-small
-    fab
-  ></v-btn>
+  <v-tooltip bottom open-delay="100" :disabled="!tooltipText">
+    <template v-slot:activator="{ on, attrs }">
+      <v-btn
+        v-bind:class="[engineClass, 'btnBase']"
+        v-bind="attrs"
+        v-on="on"
+        @click="switchTranslator"
+        color="white"
+        x-small
+        fab
+        :height="buttonSize"
+        :width="buttonSize"
+      ></v-btn>
+    </template>
+    <span>{{ tooltipText }}</span>
+  </v-tooltip>
 </template>
 
 <script lang="ts">
-import WindowController from "./WindowController.vue";
 import Vue from "vue";
 import Component, { mixins } from "vue-class-component";
 import config from "@/common/configuration";
-import eventBus from "@/common/event-bus";
+import Base from "./Base.vue";
 
 const AppProps = Vue.extend({
   props: {
     engine: String,
     valid: Boolean,
+    tooltip: String,
     enable: {
       type: Boolean,
       default: true,
@@ -27,12 +36,24 @@ const AppProps = Vue.extend({
 });
 
 @Component
-export default class EngineButton extends mixins(WindowController, AppProps) {
+export default class EngineButton extends mixins(AppProps, Base) {
   get engineClass() {
     if (this.engine == "baidu-domain") {
-      return `${this.engine}-${config.get("baidu-domain").domain}`;
+      return `${this.engine}-${config.get<any>("baidu-domain").domain}`;
     } else {
       return this.engine;
+    }
+  }
+
+  get buttonSize() {
+    return `${this.titlebarHeightVal - 2}px`;
+  }
+
+  get tooltipText() {
+    if (this.tooltip == undefined && this.engine == "copytranslator") {
+      return this.trans["multiSourceButton"]; //多源对比
+    } else {
+      return this.tooltip;
     }
   }
 

@@ -3,20 +3,25 @@
 </template>
 
 <script lang="ts">
-import { Watch, Component, Vue, Mixins } from "vue-property-decorator";
-import { Identifier } from "../common/types";
+import { Component } from "vue-property-decorator";
 import { shell } from "electron";
 import eventBus from "@/common/event-bus";
 import logger from "@/common/logger";
+import Base from "./Base.vue";
+
+type Name = "result" | "source" | "diff" | "dict";
 
 @Component
-export default class BaseView extends Vue {
+export default class BaseView extends Base {
   toKeyan() {
     shell.openExternal("https://www.keyanyuedu.com/?channel=copytranslator");
   }
 
   get valid() {
-    return this.dictResult.valid && this.layoutType === "focus";
+    return (
+      this.dictResult.valid &&
+      (this.config.contrastDict || this.layoutType === "focus")
+    );
   }
 
   get currentEngine() {
@@ -54,16 +59,72 @@ export default class BaseView extends Vue {
     return this.$store.state.dictResult;
   }
 
-  get config() {
-    return this.$store.state.config;
+  get sourceSize() {
+    return this.config[this.layoutType].sourceFontSize;
   }
 
-  set(key: Identifier, val: any) {
-    this.$controller.set(key, val);
+  get resultSize() {
+    return this.config[this.layoutType].resultFontSize;
   }
 
-  get size() {
-    return this.config[this.layoutType].fontSize;
+  get diffSize() {
+    return this.config[this.layoutType].diffFontSize;
+  }
+
+  get dictSize() {
+    return this.config[this.layoutType].dictFontSize;
+  }
+
+  get layoutConfig() {
+    return this.config[this.layoutType];
+  }
+
+  changeFont(name: Name, plus: boolean) {
+    if (name == "result") {
+      if (this.multiSource) {
+        name = "diff";
+      } else if (!this.config["contrastDict"] || !this.dictResult.valid) {
+      } else if (this.config["contrastDict"] && this.dictResult.valid) {
+        name = "dict";
+      }
+    }
+    const n: Name = name;
+    // console.log(n);
+    //@ts-ignore
+    const size: number = this[`${n}Size`];
+    const fontKey = `${n}FontSize`;
+    if (plus) {
+      this.updateLayoutConfig({ [fontKey]: size + 1 });
+    } else {
+      this.updateLayoutConfig({ [fontKey]: size - 1 });
+    }
+  }
+
+  wheelHandler(e: WheelEvent, name: Name) {
+    if (!e.ctrlKey) {
+      return;
+    }
+    if (e.deltaY > 0) {
+      this.changeFont(name, false);
+    } else if (e.deltaY < 0) {
+      this.changeFont(name, true);
+    } else {
+      console.log(e, name);
+    }
+  }
+
+  keyboardFontHandler(e: KeyboardEvent, name: Name) {
+    if (e.key == "-") {
+      this.changeFont(name, false);
+    } else if (e.key == "=") {
+      this.changeFont(name, true);
+    } else {
+      console.log(e);
+    }
+  }
+
+  updateLayoutConfig(newLayoutConfig: any) {
+    this.set(this.layoutType, { ...this.layoutConfig, ...newLayoutConfig });
   }
 
   baidu() {
@@ -93,6 +154,12 @@ export default class BaseView extends Vue {
 
   created() {
     eventBus.on("translateInput", this.translate);
+  }
+
+  get appStyle() {
+    return {
+      "font-family": this.config.interfaceFontFamily,
+    };
   }
 
   command() {

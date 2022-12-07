@@ -1,23 +1,27 @@
 <template>
-  <div>
+  <div
+    contenteditable="true"
+    @wheel="wheelHandler($event, 'result')"
+    @keydown.ctrl.187="keyboardFontHandler($event, 'result')"
+    @keydown.ctrl.189="keyboardFontHandler($event, 'result')"
+  >
     <div
       class="max"
       @keyup.ctrl.13="translate"
       @keyup.ctrl.71="google"
       @keyup.ctrl.66="baidu"
       @keyup.ctrl.80="command"
-      v-on:contextmenu="openMenu('focusContext')"
+      @contextmenu="openMenu('focusContext')"
       v-on:drop="dragTranslate"
     >
       <textarea
         ref="normalResult"
-        class="focusText max"
+        class="focusText max text--primary"
         v-bind:style="focusStyle"
         v-model="sharedResult.translation"
         v-if="sharedResult && !dictResult.valid && !multiSource"
       ></textarea>
       <DiffTextArea
-        contenteditable="true"
         v-if="sharedResult && !dictResult.valid && multiSource"
         class="focusText max"
         :allParts="sharedDiff.allParts"
@@ -32,6 +36,7 @@
     <div style="font-size: 15px; position: absolute; right: 0px; bottom: 5px;">
       <div
         v-if="
+          sharedResult.engine !== '' &&
           sharedResult.engine !== currentEngine &&
           !multiSource &&
           !dictResult.valid
@@ -39,9 +44,8 @@
       >
         <a>
           <span>
-            {{ currentEngine }}引擎不支持此语言，此结果由备用引擎{{
-              sharedResult.engine
-            }}提供
+            {{ currentEngine }}&nbsp;{{ trans["fallbackPrompt1"]
+            }}{{ sharedResult.engine }}{{ trans["fallbackPrompt2"] }}
           </span>
         </a>
       </div>
@@ -56,11 +60,8 @@
 
 <script lang="ts">
 import BaseView from "./BaseView.vue";
-import WindowController from "./WindowController.vue";
 import DictResultPanel from "./DictResult.vue";
 import { Mixins, Ref, Component } from "vue-property-decorator";
-import { Identifier, RouteActionType } from "../common/types";
-import eventBus from "../common/event-bus";
 import DiffTextArea from "./DiffTextArea.vue";
 @Component({
   components: {
@@ -68,7 +69,7 @@ import DiffTextArea from "./DiffTextArea.vue";
     DiffTextArea,
   },
 })
-export default class FocusMode extends Mixins(BaseView, WindowController) {
+export default class FocusMode extends Mixins(BaseView) {
   @Ref("dictResultPanel") readonly dictResultPanel!: DictResultPanel;
 
   dragTranslate(event: any) {
@@ -81,7 +82,7 @@ export default class FocusMode extends Mixins(BaseView, WindowController) {
 
   get focusStyle() {
     return {
-      fontSize: this.size.toString() + "px",
+      fontSize: this.resultSize.toString() + "px",
     };
   }
 
@@ -103,7 +104,7 @@ export default class FocusMode extends Mixins(BaseView, WindowController) {
 
 <style scoped>
 .focusText {
-  border: solid 1px #bebebe;
+  resize: none;
 }
 .max {
   height: 100%;
